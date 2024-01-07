@@ -234,6 +234,11 @@ abstract class BaseNode(implicit val valName: ValName) {
   /** @return name of this node. */
   def name: String = scope.map(_.name).getOrElse("TOP") + "." + valName.name
 
+  /** @return name of this node as shown in yEd. Modified to meet yEd labeling requirements. */
+  def nameGraphML: String = {
+    name.split('.').last.replace('<','_')
+  }
+
   /** Determines whether or not this node will be excluded from the graph visualization.
     *
     * By default, if this node has neither inputs nor outputs it will be excluded.

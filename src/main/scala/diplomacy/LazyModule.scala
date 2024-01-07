@@ -182,7 +182,7 @@ abstract class LazyModule()(implicit val p: Parameters) {
     buf ++= s"""$pad  <graph id=\"$index::\" edgedefault=\"directed\">\n"""
     nodes.filter(!_.omitGraphML).foreach { n =>
       buf ++= s"""$pad    <node id=\"$index::${n.index}\">\n"""
-      buf ++= s"""$pad      <data key=\"n\"><y:ShapeNode><y:Shape type="ellipse"/><y:Fill color="#FFCC00" transparent=\"${n.circuitIdentity}\"/></y:ShapeNode></data>\n"""
+      buf ++= s"""$pad      <data key=\"n\"><y:ShapeNode><y:NodeLabel modelName=\"sides\" modelPosition=\"w\" rotationAngle=\"270.0\">${n.nameGraphML}</y:NodeLabel><y:Shape type="ellipse"/><y:Fill color="#FFCC00" transparent=\"${n.circuitIdentity}\"/></y:ShapeNode></data>\n"""
       buf ++= s"""$pad      <data key=\"d\">${n.formatNode}, \n${n.nodedebugstring}</data>\n"""
       buf ++= s"""$pad    </node>\n"""
     }
