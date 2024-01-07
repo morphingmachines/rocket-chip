@@ -14,7 +14,7 @@ import freechips.rocketchip.tile.{XLen}
 /** Actual testing target Configs */
 
 class TraceGenConfig extends Config(
-  new WithTraceGen(2)() ++
+  new WithTraceGen(1)() ++
   new GroundTestBaseConfig
 )
 
