@@ -10,11 +10,16 @@ import freechips.rocketchip.subsystem.{BaseSubsystem, BaseSubsystemModuleImp, Ha
 import freechips.rocketchip.tilelink.{TLRAM, TLFragmenter}
 import freechips.rocketchip.interrupts.{NullIntSyncSource}
 
+trait CanHaveNullDebugInt { this : BaseSubsystem =>
+  val debugNode = NullIntSyncSource()
+}
+
 class GroundTestSubsystem(implicit p: Parameters)
-  extends BaseSubsystem
+  extends BaseSubsystem with CanHaveNullDebugInt
   with HasTiles
   with CanHaveMasterAXI4MemPort
 {
+
   val testram = LazyModule(new TLRAM(AddressSet(0x52000000, 0xfff), beatBytes=pbus.beatBytes))
   pbus.coupleTo("TestRAM") { testram.node := TLFragmenter(pbus) := _ }
 
@@ -25,9 +30,6 @@ class GroundTestSubsystem(implicit p: Parameters)
   IntSinkNode(IntSinkPortSimple()) :=* ibus.toPLIC
 
   val tileStatusNodes = tiles.collect { case t: GroundTestTile => t.statusNode.makeSink() }
-
-  // no debug module
-  val debugNode = NullIntSyncSource()
 
   override lazy val module = new GroundTestSubsystemModuleImp(this)
 }
