@@ -305,6 +305,7 @@ sealed trait LazyModuleImpLike extends RawModule {
   /** instantiate this [[LazyModule]],
     * return [[AutoBundle]] and a unconnected [[Dangle]]s from this module and submodules. */
   protected[diplomacy] def instantiate(): (AutoBundle, List[Dangle]) = {
+    println(s"Begin LazyModule: <${wrapper.className}> <${wrapper.name}> <${wrapper.line}>")
     // 1. It will recursively append [[wrapper.children]] into [[chisel3.internal.Builder]],
     // 2. return [[Dangle]]s from each module.
     val childDangles = wrapper.children.reverse.flatMap { c =>
@@ -384,7 +385,8 @@ sealed trait LazyModuleImpLike extends RawModule {
         def toFirrtl = InlineAnnotation(toNamed)
       })
     }
-
+    
+    println(s"End LazyModule: <${wrapper.className}> <${wrapper.name}> ${wrapper.line}")
     // Return [[IO]] and [[Dangle]] of this [[LazyModuleImp]].
     (auto, dangles)
   }

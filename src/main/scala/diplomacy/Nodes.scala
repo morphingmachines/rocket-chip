@@ -1381,6 +1381,7 @@ class MixedJunctionNode[DI, UI, EI, BI <: Data, DO, UO, EO, BO <: Data](
 
   override def description = "junction"
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name MixedJunctionNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     require (iKnown == 0 || oKnown == 0,
       s"""Diplomacy has detected a problem with your graph:
          |The following node appears left of a :=* or a := and right of a :*= or :=. Only one side may drive multiplicity.
@@ -1443,6 +1444,7 @@ class MixedAdapterNode[DI, UI, EI, BI <: Data, DO, UO, EO, BO <: Data](
   override def description = "adapter"
   protected[diplomacy] override def flexibleArityDirection = true
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name MixedAdapterNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     require (oStars + iStars <= 1,
       s"""Diplomacy has detected a problem with your graph:
          |The following node appears left of a :*= $iStars times and right of a :=* $oStars times, at most once is allowed.
@@ -1561,6 +1563,7 @@ class MixedNexusNode[DI, UI, EI, BI <: Data, DO, UO, EO, BO <: Data](
 {
   override def description = "nexus"
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name MixedNexusNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     // a nexus treats :=* as a weak pointer
     def resolveStarInfo: String =
       s"""$context
@@ -1605,6 +1608,7 @@ class SourceNode[D, U, EO, EI, B <: Data](imp: NodeImp[D, U, EO, EI, B])(po: Seq
 {
   override def description = "source"
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name SourceNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     def resolveStarInfo: String =
       s"""$context
          |$bindingInfo
@@ -1669,6 +1673,7 @@ class SinkNode[D, U, EO, EI, B <: Data](imp: NodeImp[D, U, EO, EI, B])(pi: Seq[U
 {
   override def description = "sink"
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name SinkNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     def resolveStarInfo: String =
       s"""$context
          |$bindingInfo
@@ -1738,6 +1743,7 @@ class MixedTestNode[DI, UI, EI, BI <: Data, DO, UO, EO, BO <: Data] protected[di
 
   override def description = "test"
   protected[diplomacy] def resolveStar(iKnown: Int, oKnown: Int, iStars: Int, oStars: Int): (Int, Int) = {
+    println(s"resolveStar $name MixedTestNode ($iKnown,$oKnown,$iStars,$oStars) ${scope.map(_.line).getOrElse("<undef>")}")
     def resolveStarInfo: String =
       s"""$context
          |$bindingInfo
