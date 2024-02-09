@@ -48,9 +48,9 @@ case class RocketCoreParams(
   mimpid: Int = 0x20181004, // release date in BCD
   mulDiv: Option[MulDivParams] = Some(MulDivParams()),
   fpu: Option[FPUParams] = Some(FPUParams()),
-  debugROB: Boolean = false, // if enabled, uses a C++ debug ROB to generate trace-with-wdata
+  debugROB: Option[DebugROBParams] = None, // if size < 1, SW ROB, else HW ROB
   haveCease: Boolean = true, // non-standard CEASE instruction
-  haveSimTimeout: Boolean = true // add plusarg for simulation timeout
+  haveSimTimeout: Boolean = true, // add plusarg for simulation timeout
 ) extends CoreParams {
   val lgPauseCycles = 5
   val haveFSDirty = false
@@ -61,7 +61,7 @@ case class RocketCoreParams(
   val retireWidth: Int = 1
   val instBits: Int = if (useCompressed) 16 else 32
   val lrscCycles: Int = 80 // worst case is 14 mispredicted branches + slop
-  val traceHasWdata: Boolean = false // ooo wb, so no wdata in trace
+  val traceHasWdata: Boolean = debugROB.isDefined // ooo wb, so no wdata in trace
   override val customIsaExt = Option.when(haveCease)("xrocket") // CEASE instruction
   override def minFLen: Int = fpu.map(_.minFLen).getOrElse(32)
   override def customCSRs(implicit p: Parameters) = new RocketCustomCSRs
@@ -112,9 +112,34 @@ class RocketCustomCSRs(implicit p: Parameters) extends CustomCSRs with HasRocket
   override def decls = super.decls :+ marchid :+ mvendorid :+ mimpid
 }
 
+class CoreInterrupts(val hasBeu: Boolean)(implicit p: Parameters) extends TileInterrupts()(p) {
+  val buserror = Option.when(hasBeu)(Bool())
+}
+
+trait HasRocketCoreIO extends HasRocketCoreParameters {
+  implicit val p: Parameters
+  def nTotalRoCCCSRs: Int
+  val io = IO(new CoreBundle()(p) {
+    val hartid = Input(UInt(hartIdLen.W))
+    val reset_vector = Input(UInt(resetVectorLen.W))
+    val interrupts = Input(new CoreInterrupts(tileParams.asInstanceOf[RocketTileParams].beuAddr.isDefined))
+    val imem  = new FrontendIO
+    val dmem = new HellaCacheIO
+    val ptw = Flipped(new DatapathPTWIO())
+    val fpu = Flipped(new FPUCoreIO())
+    val rocc = Flipped(new RoCCCoreIO(nTotalRoCCCSRs))
+    val trace = Output(new TraceBundle)
+    val bpwatch = Output(Vec(coreParams.nBreakpoints, new BPWatch(coreParams.retireWidth)))
+    val cease = Output(Bool())
+    val wfi = Output(Bool())
+    val traceStall = Input(Bool())
+  })
+}
+
+
 class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
     with HasRocketCoreParameters
-    with HasCoreIO {
+    with HasRocketCoreIO {
   def nTotalRoCCCSRs = tile.roccCSRs.flatten.size
 
   val clock_en_reg = RegInit(true.B)
@@ -291,7 +316,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ctrl_killd = Wire(Bool())
   val id_npc = (ibuf.io.pc.asSInt + ImmGen(IMM_UJ, id_inst(0))).asUInt
 
-  val csr = Module(new CSRFile(perfEvents, coreParams.customCSRs.decls, tile.roccCSRs.flatten))
+  val csr = Module(new CSRFile(perfEvents, coreParams.customCSRs.decls, tile.roccCSRs.flatten, tile.rocketParams.beuAddr.isDefined))
   val id_csr_en = id_ctrl.csr.isOneOf(CSR.S, CSR.C, CSR.W)
   val id_system_insn = id_ctrl.csr === CSR.I
   val id_csr_ren = id_ctrl.csr.isOneOf(CSR.S, CSR.C) && id_expanded_inst(0).rs1 === 0.U
@@ -384,10 +409,10 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   val ex_rs = for (i <- 0 until id_raddr.size)
     yield Mux(ex_reg_rs_bypass(i), bypass_mux(ex_reg_rs_lsb(i)), Cat(ex_reg_rs_msb(i), ex_reg_rs_lsb(i)))
   val ex_imm = ImmGen(ex_ctrl.sel_imm, ex_reg_inst)
-  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S, Seq(
+  val ex_op1 = MuxLookup(ex_ctrl.sel_alu1, 0.S)(Seq(
     A1_RS1 -> ex_rs(0).asSInt,
     A1_PC -> ex_reg_pc.asSInt))
-  val ex_op2 = MuxLookup(ex_ctrl.sel_alu2, 0.S, Seq(
+  val ex_op2 = MuxLookup(ex_ctrl.sel_alu2, 0.S)(Seq(
     A2_RS2 -> ex_rs(1).asSInt,
     A2_IMM -> ex_imm,
     A2_SIZE -> Mux(ex_reg_rvc, 2.S, 4.S)))
@@ -736,18 +761,37 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   io.rocc.csrs <> csr.io.roccCSRs
   io.trace.time := csr.io.time
   io.trace.insns := csr.io.trace
-  if (rocketParams.debugROB) {
-    val csr_trace_with_wdata = WireInit(csr.io.trace(0))
-    csr_trace_with_wdata.wdata.get := rf_wdata
-    DebugROB.pushTrace(clock, reset,
-      io.hartid, csr_trace_with_wdata,
-      (wb_ctrl.wfd || (wb_ctrl.wxd && wb_waddr =/= 0.U)) && !csr.io.trace(0).exception,
-      wb_ctrl.wxd && wb_wen && !wb_set_sboard,
-      wb_waddr + Mux(wb_ctrl.wfd, 32.U, 0.U))
+  if (rocketParams.debugROB.isDefined) {
+    val sz = rocketParams.debugROB.get.size
+    if (sz < 1) { // use unsynthesizable ROB
+      val csr_trace_with_wdata = WireInit(csr.io.trace(0))
+      csr_trace_with_wdata.wdata.get := rf_wdata
+      DebugROB.pushTrace(clock, reset,
+        io.hartid, csr_trace_with_wdata,
+        (wb_ctrl.wfd || (wb_ctrl.wxd && wb_waddr =/= 0.U)) && !csr.io.trace(0).exception,
+        wb_ctrl.wxd && wb_wen && !wb_set_sboard,
+        wb_waddr + Mux(wb_ctrl.wfd, 32.U, 0.U))
 
-    io.trace.insns(0) := DebugROB.popTrace(clock, reset, io.hartid)
+      io.trace.insns(0) := DebugROB.popTrace(clock, reset, io.hartid)
 
-    DebugROB.pushWb(clock, reset, io.hartid, ll_wen, rf_waddr, rf_wdata)
+      DebugROB.pushWb(clock, reset, io.hartid, ll_wen, rf_waddr, rf_wdata)
+    } else { // synthesizable ROB (no FPRs)
+      val csr_trace_with_wdata = WireInit(csr.io.trace(0))
+      csr_trace_with_wdata.wdata.get := rf_wdata
+
+      val debug_rob = Module(new HardDebugROB(sz, 32))
+      debug_rob.io.i_insn := csr_trace_with_wdata
+      debug_rob.io.should_wb := (wb_ctrl.wfd || (wb_ctrl.wxd && wb_waddr =/= 0.U)) &&
+                                !csr.io.trace(0).exception
+      debug_rob.io.has_wb := wb_ctrl.wxd && wb_wen && !wb_set_sboard
+      debug_rob.io.tag    := wb_waddr + Mux(wb_ctrl.wfd, 32.U, 0.U)
+
+      debug_rob.io.wb_val  := ll_wen
+      debug_rob.io.wb_tag  := rf_waddr
+      debug_rob.io.wb_data := rf_wdata
+
+      io.trace.insns(0) := debug_rob.io.o_insn
+    }
   } else {
     io.trace.insns := csr.io.trace
   }
