@@ -254,10 +254,10 @@ class CSRDecodeIO(implicit p: Parameters) extends CoreBundle {
   val virtual_system_illegal = Output(Bool())
 }
 
-class CSRFileIO(implicit p: Parameters) extends CoreBundle
+class CSRFileIO(hasBeu: Boolean)(implicit p: Parameters) extends CoreBundle
     with HasCoreParameters {
   val ungated_clock = Input(Clock())
-  val interrupts = Input(new CoreInterrupts())
+  val interrupts = Input(new CoreInterrupts(hasBeu))
   val hartid = Input(UInt(hartIdLen.W))
   val rw = new Bundle {
     val addr = Input(UInt(CSR.ADDRSZ.W))
@@ -375,10 +375,11 @@ class VType(implicit p: Parameters) extends CoreBundle {
 class CSRFile(
   perfEventSets: EventSets = new EventSets(Seq()),
   customCSRs: Seq[CustomCSR] = Nil,
-  roccCSRs: Seq[CustomCSR] = Nil)(implicit p: Parameters)
+  roccCSRs: Seq[CustomCSR] = Nil,
+  hasBeu: Boolean = false)(implicit p: Parameters)
     extends CoreModule()(p)
     with HasCoreParameters {
-  val io = IO(new CSRFileIO {
+  val io = IO(new CSRFileIO(hasBeu) {
     val customCSRs = Vec(CSRFile.this.customCSRs.size, new CustomCSRIO)
     val roccCSRs = Vec(CSRFile.this.roccCSRs.size, new CustomCSRIO)
   })
@@ -846,10 +847,17 @@ class CSRFile(
     val unvirtualized_mapping = (for (((k, _), v) <- read_mapping zip decoded) yield k -> v.asBool).toMap
 
     for ((k, v) <- unvirtualized_mapping) yield k -> {
-      val alt = CSR.mode(k) match {
-        case PRV.S => unvirtualized_mapping.lift(k + (1 << CSR.modeLSB))
-        case PRV.H => unvirtualized_mapping.lift(k - (1 << CSR.modeLSB))
-        case _ => None
+      val alt: Option[Bool] = CSR.mode(k) match {
+        // hcontext was assigned an unfortunate address; it lives where a
+        // hypothetical vscontext will live.  Exclude them from the S/VS remapping.
+        // (on separate lines so scala-lint doesnt do something stupid)
+        case _ if k == CSRs.scontext => None
+        case _ if k == CSRs.hcontext => None
+        // When V=1, if a corresponding VS CSR exists, access it instead...
+        case PRV.H                   => unvirtualized_mapping.lift(k - (1 << CSR.modeLSB))
+        // ...and don't access the original S-mode version.
+        case PRV.S                   => unvirtualized_mapping.contains(k + (1 << CSR.modeLSB)).option(false.B)
+        case _                       => None
       }
       alt.map(Mux(reg_mstatus.v, _, v)).getOrElse(v)
     }

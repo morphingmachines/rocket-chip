@@ -3,8 +3,9 @@
 package freechips.rocketchip.diplomacy
 
 import chisel3._
-import chisel3.experimental.{DataMirror, SourceInfo}
-import chisel3.experimental.DataMirror.internal.chiselTypeClone
+import chisel3.experimental.SourceInfo
+import chisel3.reflect.DataMirror
+import chisel3.reflect.DataMirror.internal.chiselTypeClone
 import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.util.DataToAugmentedData
 
@@ -124,7 +125,7 @@ class BundleBridgeNexus[T <: Data](
   val node = BundleBridgeNexusNode[T](default, inputRequiresOutput)
 
   lazy val module = new Impl
-  class Impl extends LazyModuleImp(this) {
+  class Impl extends LazyRawModuleImp(this) {
     val defaultWireOpt = default.map(_())
     val inputs: Seq[T] = node.in.map(_._1)
     inputs.foreach { i => require(DataMirror.checkTypeEquivalence(i, inputs.head),
