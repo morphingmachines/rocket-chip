@@ -4,6 +4,7 @@ import mill.scalalib.publish._
 import coursier.maven.MavenRepository
 import $file.dependencies.hardfloat.common
 import $file.dependencies.cde.common
+import $file.dependencies.diplomacy.common
 import $file.dependencies.chisel.build
 import $file.common
 
@@ -18,6 +19,7 @@ object v {
   val mainargs = ivy"com.lihaoyi::mainargs:0.5.0"
   val json4sJackson = ivy"org.json4s::json4s-jackson:4.0.5"
   val scalaReflect = ivy"org.scala-lang:scala-reflect:${scala}"
+  val sourcecode = ivy"com.lihaoyi::sourcecode:0.3.1"
   val sonatypesSnapshots = Seq(
     MavenRepository("https://s01.oss.sonatype.org/content/repositories/snapshots")
   )
@@ -79,6 +81,31 @@ trait CDE
   override def millSourcePath = os.pwd / "dependencies" / "cde" / "cde"
 }
 
+object diplomacy extends mill.define.Cross[Diplomacy](v.chiselCrossVersions.keys.toSeq)
+
+trait Diplomacy
+    extends millbuild.dependencies.diplomacy.common.DiplomacyModule
+    with RocketChipPublishModule
+    with Cross.Module[String] {
+
+  override def scalaVersion: T[String] = T(v.scala)
+
+  override def millSourcePath = os.pwd / "dependencies" / "diplomacy" / "diplomacy"
+
+  // dont use chisel from source
+  def chiselModule = Option.when(crossValue == "source")(chisel)
+  def chiselPluginJar = T(Option.when(crossValue == "source")(chisel.pluginModule.jar()))
+
+  // use chisel from ivy
+  def chiselIvy = Option.when(crossValue != "source")(v.chiselCrossVersions(crossValue)._1)
+  def chiselPluginIvy = Option.when(crossValue != "source")(v.chiselCrossVersions(crossValue)._2)
+
+  // use CDE from source until published to sonatype
+  def cdeModule = cde
+
+  def sourcecodeIvy = v.sourcecode
+}
+
 object rocketchip extends Cross[RocketChip](v.chiselCrossVersions.keys.toSeq)
 
 trait RocketChip
@@ -104,6 +131,10 @@ trait RocketChip
 
   def cdeModule = cde
 
+  def diplomacyModule = diplomacy(crossValue)
+
+  def diplomacyIvy = None
+
   def mainargsIvy = v.mainargs
 
   def json4sJacksonIvy = v.json4sJackson
@@ -126,7 +157,6 @@ trait RocketChipPublishModule
 
   override def publishVersion: T[String] = T("1.6-SNAPSHOT")
 }
-
 
 // Tests
 trait Emulator extends Cross.Module2[String, String] {
@@ -152,6 +182,35 @@ trait Emulator extends Cross.Module2[String, String] {
 
     def chirrtl = T {
       os.walk(elaborate().path).collectFirst { case p if p.last.endsWith("fir") => p }.map(PathRef(_)).get
+    }
+  }
+
+  object litexgenerate extends Module {
+    def compile = T {
+      os.proc("firtool",
+        generator.chirrtl().path,
+        s"--annotation-file=${generator.chiselAnno().path}",
+        "--disable-annotation-unknown",
+        "-dedup",
+        "-O=debug",
+        "--split-verilog",
+        "--preserve-values=named",
+        "--output-annotation-file=mfc.anno.json",
+        "--lowering-options=disallowLocalVariables",
+        s"-o=${T.dest}"
+      ).call(T.dest)
+      PathRef(T.dest)
+    }
+
+    def rtls = T {
+      os.read(compile().path / "filelist.f").split("\n").map(str =>
+        try {
+          os.Path(str)
+        } catch {
+          case e: IllegalArgumentException if e.getMessage.contains("is not an absolute path") =>
+            compile().path / str.stripPrefix("./")
+        }
+      ).filter(p => p.ext == "v" || p.ext == "sv").map(PathRef(_)).toSeq
     }
   }
 
@@ -203,7 +262,7 @@ trait Emulator extends Cross.Module2[String, String] {
         "debug_rob.cc",
         "emulator.cc",
         "remote_bitbang.cc",
-        ).map(c => PathRef(csrcDir().path / c))
+      ).map(c => PathRef(csrcDir().path / c))
     }
 
     def CMakeListsString = T {
@@ -286,6 +345,7 @@ object emulator extends Cross[Emulator](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBufferlessConfig"),
   // RocketSuiteC
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig"),
+
   // Unittest
   ("freechips.rocketchip.unittest.TestHarness", "freechips.rocketchip.unittest.AMBAUnitTestConfig"),
   ("freechips.rocketchip.unittest.TestHarness", "freechips.rocketchip.unittest.TLSimpleUnitTestConfig"),
@@ -313,6 +373,42 @@ object emulator extends Cross[Emulator](
   //
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultFP16Config"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBConfig"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32BConfig"),
+
+  // Litex
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall1x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall1x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall1x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall1x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall2x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall2x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall2x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall2x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall4x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall4x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall4x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall4x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall8x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall8x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall8x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigSmall8x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig1x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig1x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig1x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig1x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig2x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig2x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig2x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig2x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig4x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig4x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig4x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig4x8"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig8x1"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig8x2"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig8x4"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.LitexConfigBig8x8"),
 )
 
 object `runnable-riscv-test` extends mill.Cross[RiscvTest](
@@ -374,8 +470,8 @@ object `runnable-riscv-test` extends mill.Cross[RiscvTest](
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32uc-v", "none"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32uf-p", "none"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32uf-v", "none"),
-  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32ui-p", "none"),
-  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32ui-v", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32ui-p", "ma_data"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32ui-v", "ma_data"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32um-p", "none"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32Config", "rv32um-v", "none"),
 
@@ -387,11 +483,17 @@ object `runnable-riscv-test` extends mill.Cross[RiscvTest](
   // lsrc is not implemented if usingDataScratchpad
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig", "rv32ua-p", "lrsc"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig", "rv32uc-p", "none"),
-  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig", "rv32ui-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig", "rv32ui-p", "ma_data"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.TinyConfig", "rv32um-p", "none"),
 
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultFP16Config", "rv64uzfh-p", "none"),
   ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultFP16Config", "rv64uzfh-v", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBConfig", "rv64uzba-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBConfig", "rv64uzbb-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultBConfig", "rv64uzbs-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32BConfig", "rv32uzba-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32BConfig", "rv32uzbb-p", "none"),
+  ("freechips.rocketchip.system.TestHarness", "freechips.rocketchip.system.DefaultRV32BConfig", "rv32uzbs-p", "none"),
 )
 
 object `runnable-arch-test` extends mill.Cross[ArchTest](

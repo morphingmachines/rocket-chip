@@ -2,7 +2,8 @@
 
 package freechips.rocketchip
 
-import freechips.rocketchip.diplomacy._
+import org.chipsalliance.diplomacy.nodes._
+import freechips.rocketchip.diplomacy.{BufferParams}
 
 package object prci
 {
@@ -16,4 +17,6 @@ package object prci
     case _: AsynchronousCrossing => async
     case _ => notasync
   }
+
+  implicit def noCrossing(value: NoCrossing.type): ClockCrossingType = SynchronousCrossing(BufferParams.none)
 }

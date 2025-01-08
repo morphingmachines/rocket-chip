@@ -1,8 +1,12 @@
 // See LICENSE.SiFive for license details.
 package freechips.rocketchip.prci
 
-import org.chipsalliance.cde.config.Parameters
-import freechips.rocketchip.diplomacy._
+import org.chipsalliance.cde.config._
+import org.chipsalliance.diplomacy._
+import org.chipsalliance.diplomacy.lazymodule._
+import org.chipsalliance.diplomacy.nodes._
+
+import freechips.rocketchip.resources.FixedClockResource
 
 case class ClockGroupingNode(groupName: String)(implicit valName: ValName)
   extends MixedNexusNode(ClockGroupImp, ClockImp)(
@@ -44,7 +48,7 @@ case class ClockGroupAggregateNode(groupName: String)(implicit valName: ValName)
 class ClockGroupAggregator(groupName: String)(implicit p: Parameters) extends LazyModule
 {
   val node = ClockGroupAggregateNode(groupName)
-
+  override lazy val desiredName = s"ClockGroupAggregator_$groupName"
   lazy val module = new Impl
   class Impl extends LazyRawModuleImp(this) {
     val (in, _) = node.in.unzip
@@ -100,6 +104,7 @@ class FixedClockBroadcast(fixedClockOpt: Option[ClockParameters])(implicit p: Pa
   class Impl extends LazyRawModuleImp(this) {
     val (in, _) = node.in(0)
     val (out, _) = node.out.unzip
+    override def desiredName = s"FixedClockBroadcast_${out.size}"
     require (node.in.size == 1, "FixedClockBroadcast can only broadcast a single clock")
     out.foreach { _ := in }
   }

@@ -3,16 +3,18 @@ package freechips.rocketchip.subsystem
 import chisel3._
 import chisel3.util._
 
-import org.chipsalliance.cde.config.{Field, Parameters}
-import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.interrupts._
-import freechips.rocketchip.prci._
-import freechips.rocketchip.tile.{RocketTile, NMI, TraceBundle}
-import freechips.rocketchip.subsystem._
-import freechips.rocketchip.tilelink._
+import org.chipsalliance.cde.config._
+import org.chipsalliance.diplomacy.bundlebridge._
+import org.chipsalliance.diplomacy.lazymodule._
+
 import freechips.rocketchip.devices.debug.{TLDebugModule}
-import freechips.rocketchip.devices.tilelink._
-import freechips.rocketchip.util._
+import freechips.rocketchip.diplomacy.{FlipRendering}
+import freechips.rocketchip.interrupts.{IntIdentityNode, IntSyncIdentityNode, NullIntSource}
+import freechips.rocketchip.prci.{ClockCrossingType, NoCrossing, ClockSinkParameters, ClockGroupIdentityNode, BundleBridgeBlockDuringReset}
+import freechips.rocketchip.tile.{RocketTile, NMI, TraceBundle}
+import freechips.rocketchip.tilelink.TLWidthWidget
+import freechips.rocketchip.util.TraceCoreInterface
+
 import scala.collection.immutable.SortedMap
 
 case class ClustersLocated(loc: HierarchicalLocation) extends Field[Seq[CanAttachCluster]](Nil)
@@ -61,6 +63,7 @@ class Cluster(
   def msipDomain = this
   def meipDomain = this
   def seipDomain = this
+  def toPlicDomain = this
   lazy val msipNodes = totalTileIdList.map { i => (i, IntIdentityNode()) }.to(SortedMap)
   lazy val meipNodes = totalTileIdList.map { i => (i, IntIdentityNode()) }.to(SortedMap)
   lazy val seipNodes = totalTileIdList.map { i => (i, IntIdentityNode()) }.to(SortedMap)
