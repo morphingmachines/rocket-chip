@@ -166,7 +166,7 @@ class RocketTileModuleImp(outer: RocketTile) extends BaseTileModuleImp(outer)
     with HasFpuOpt
     with HasLazyRoCCModule
     with HasICacheFrontendModule {
-  val core = Module(new Rocket(outer)(outer.p))
+  lazy val core = Module(new Rocket(outer)(outer.p))
   outer.vector_unit.foreach { v =>
     core.io.vector.get <> v.module.io.core
     v.module.io.tlb <> outer.dcache.module.io.tlb_port

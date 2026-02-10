@@ -220,7 +220,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
       ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
 
   val pipelinedMul = usingMulDiv && mulDivParams.mulUnroll == xLen
-  val decode_table = {
+  def decode_table = {
     (if (usingMulDiv) new MDecode(pipelinedMul) +: (xLen > 32).option(new M64Decode(pipelinedMul)).toSeq else Nil) ++:
     (if (usingAtomics) new ADecode +: (xLen > 32).option(new A64Decode).toSeq else Nil) ++:
     (if (fLen >= 32)    new FDecode +: (xLen > 32).option(new F64Decode).toSeq else Nil) ++:
@@ -1302,7 +1302,8 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   )(csr.io.time)
 
   } // leaving gated-clock domain
-  val rocketImpl = withClock (gated_clock) { new RocketImpl }
+  def rocketImpl = withClock (gated_clock) { new RocketImpl }
+  rocketImpl
 
   def checkExceptions(x: Seq[(Bool, UInt)]) =
     (WireInit(x.map(_._1).reduce(_||_)), WireInit(PriorityMux(x)))
