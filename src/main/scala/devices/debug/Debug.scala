@@ -1124,12 +1124,12 @@ class TLDebugModuleInner(device: Device, getNComponents: () => Int, beatBytes: I
       }
 
       for (hg <- 1 to nHaltGroups) {
-        hgHartFiring(hg) := hartHaltedWrEn & ~haltedBitRegs(hartHaltedId) & (hgParticipateHart(hartSelFuncs.hartIdToHartSel(hartHaltedId)) === hg.U)
+        hgHartFiring(hg) := hartHaltedWrEn & ~haltedBitRegs(hartSelFuncs.hartIdToHartSel(hartHaltedId)) & (hgParticipateHart(hartSelFuncs.hartIdToHartSel(hartHaltedId)) === hg.U)
         hgHartsAllHalted(hg) := (haltedBitRegs.asBools | hgParticipateHart.map(_ =/= hg.U)).reduce(_ & _)
 
         when (~io.dmactive || ~dmAuthenticated) {
           hgFired(hg) := false.B
-        }.elsewhen (~hgFired(hg) & (hgHartFiring(hg) | hgTrigFiring(hg))) {
+        }.elsewhen (~hgFired(hg) & ~hgHartsAllHalted(hg) & (hgHartFiring(hg) | hgTrigFiring(hg))) {
           hgFired(hg) := true.B
         }.elsewhen ( hgFired(hg) & hgHartsAllHalted(hg) & hgTrigsAllAcked(hg)) {
           hgFired(hg) := false.B
@@ -1703,7 +1703,7 @@ class TLDebugModuleInner(device: Device, getNComponents: () => Int, beatBytes: I
           flags.zipWithIndex.map{case(x, i) => RegField.r(8, x.asUInt, RegFieldDesc(s"debug_flags_$i", "", volatile=true))}
         }),
       ROMBASE       -> RegFieldGroup("debug_rom", Some("Debug ROM"),
-        (if (cfg.atzero) DebugRomContents() else DebugRomNonzeroContents()).zipWithIndex.map{case (x, i) =>
+        (if (cfg.atzero) DebugRomContents() else DebugRomNonzeroContents()).toIndexedSeq.zipWithIndex.map{case (x, i) =>
           RegField.r(8, (x & 0xFF).U(8.W), RegFieldDesc(s"debug_rom_$i", "", reset=Some(x)))})
     )
 
