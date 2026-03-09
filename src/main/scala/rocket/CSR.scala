@@ -179,8 +179,17 @@ object CSR
 
   // mask a CSR cmd with a valid bit
   def maskCmd(valid: Bool, cmd: UInt): UInt = {
-    // all commands less than CSR.I are treated by CSRFile as NOPs
-    cmd & ~Mux(valid, 0.U, CSR.I)
+    /**
+      * The default Rocket-Chip implementation assumes all commands 
+      * less than CSR.I are treated by CSRFile as NOPs.
+      *  // cmd & ~Mux(valid, 0.U, CSR.I) 
+      * 
+      * In Redefine CEs, CSR reads have side-effects. 
+      * Reading "ORCH-PC-CSR" has side-effect as stalling 
+      *   "ORCH-PC-CSR" further read operations. Until the 
+      *   "ORCH-PC-CSR" is set by orchestrator.
+      */ 
+    Mux(valid, cmd, CSR.N)
   }
 
   val ADDRSZ = 12
