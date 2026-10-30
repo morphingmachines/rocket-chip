@@ -1302,7 +1302,7 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
   )(csr.io.time)
 
   } // leaving gated-clock domain
-  def rocketImpl = withClock (gated_clock) { new RocketImpl }
+  lazy val rocketImpl = withClock (gated_clock) { new RocketImpl }
   rocketImpl
 
   def checkExceptions(x: Seq[(Bool, UInt)]) =
